@@ -1,0 +1,490 @@
+#
+# Title : oneliners
+# Author: Jack Veraart
+# Date  : 2020-07-05
+#     
+
+"""
+<plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="1.0">
+    <description>
+        <font size="4" color="white">OneLiners </font><font color="white">...Notes...</font>
+        <ul style="list-style-type:square">
+            <li><font color="yellow">When you have a Password on your domoticz, enter Username and Password below, not your admin account <font size="4" color="white"><b>:-(</b></font> create a read only user <font size="4" color="white"><b>;-)</b></font> </font></li>
+            <li><font color="yellow">It is needed to import all the icons from the CustomIcons subfolder.</font></li>
+            <li><font color="yellow">To develop your own plugin...check this web site... <a href="https://www.domoticz.com/wiki/Developing_a_Python_plugin" ><font color="cyan">Developing_a_Python_plugin</font></a></font></li>
+        </ul>
+    </description>
+    <params>
+        <param field="Username" label="Username."       width="120px" default="view"/>
+
+        <param field="Password" label="Password."       width="120px" default="view" password="true"/>
+
+        <param field="Mode6" label="Debug."             width="75px">
+            <options>
+                <option label="True"  value="Debug"/>
+                <option label="False" value="Normal"    default="true"/>
+            </options>
+        </param>
+    </params>
+</plugin>
+"""
+import Domoticz
+
+# Prepare some global variables
+
+StartupOK=0
+
+HeartbeatInterval= 10  # 10 seconds
+HeartbeatCountMax= 6   # 6 * HeartbeatInterval = 60 seconds is 1 minute
+HeartbeatCounter = 1   # counts down from Max to 1 before actual refresh; start with 1 which forces an immediate refresh after startup
+
+HomeFolder=''   # plugin finds right value
+IPPort=0        # plugin finds right value ( A dear friend of me changed the default port of his Domoticz ;-) )
+
+Username=''     # plugin finds right value
+Password=''     # plugin finds right value
+
+Base_id=1
+Base_Image='JVNo'
+
+DeviceLibrary={}
+
+class BasePlugin:
+    enabled = False
+    def __init__(self):
+        #self.var = 123
+        return
+
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    def onStart(self):
+
+        global StartupOK
+        
+        global HeartbeatInterval
+        global HomeFolder
+        global Username
+        global Password
+
+        global LocalHostInfo
+
+        self.pollinterval = HeartbeatInterval  #Time in seconds between two polls
+
+        if Parameters["Mode6"] == 'Debug':
+            self.debug = True
+            Domoticz.Debugging(1)
+            DumpConfigToLog()
+        else:
+            Domoticz.Debugging(0)
+
+        Domoticz.Log("onStart called")
+        
+        try:
+#
+# Set some globals variables to right values
+#            
+            HomeFolder      =str(Parameters["HomeFolder"])
+            Username        =str(Parameters["Username"])
+            Password        =str(Parameters["Password"])
+
+            MyIPPort        =GetDomoticzPort()            
+
+            LocalHostInfo='http://'+Username+':'+Password+'@localhost:'+MyIPPort
+
+            ImportImages()
+
+# Create devices as configured in oneliners.conf
+
+            StartupOK = CreateDevices()
+            
+            if StartupOK == 1:
+                
+                Domoticz.Log('onStartup OK')
+
+                Domoticz.Heartbeat(HeartbeatInterval)
+
+            else:
+                
+                Domoticz.Log('ERROR starting up')
+            
+        except:
+
+            StartupOK = 0
+
+            Domoticz.Log('ERROR starting up')
+
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    def onStop(self):
+        Domoticz.Log("onStop called")
+
+    def onConnect(self, Connection, Status, Description):
+        Domoticz.Log("onConnect called")
+
+    def onMessage(self, Connection, Data):
+        Domoticz.Log("onMessage called")
+
+    def onCommand(self, Unit, Command, Level, Hue):
+        Domoticz.Log("onCommand called")
+
+    def onNotification(self, Name, Subject, Text, Status, Priority, Sound, ImageFile):
+        Domoticz.Log("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
+
+    def onDisconnect(self, Connection):
+        Domoticz.Log("onDisconnect called")
+
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+    
+    def onHeartbeat(self):
+        
+        global HeartbeatCounter
+        
+        if StartupOK == 1:
+            
+            Domoticz.Debug("onHeartbeat called "+str(HeartbeatCounter))
+
+            if HeartbeatCounter == 1:
+                
+                Domoticz.Debug('Update Monitors')
+
+                for Device in DeviceLibrary:
+                    
+                    GetValue(Device)
+
+                    Devices[DeviceLibrary[Device]['Unit']].Update(  nValue=0, sValue=DeviceLibrary[Device]['sValue'])
+            
+                HeartbeatCounter = HeartbeatCountMax
+            
+            else:
+
+                HeartbeatCounter = HeartbeatCounter - 1
+            
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+global _plugin
+_plugin = BasePlugin()
+
+def onStart():
+    global _plugin
+    _plugin.onStart()
+
+def onStop():
+    global _plugin
+    _plugin.onStop()
+
+def onConnect(Connection, Status, Description):
+    global _plugin
+    _plugin.onConnect(Connection, Status, Description)
+
+def onMessage(Connection, Data):
+    global _plugin
+    _plugin.onMessage(Connection, Data)
+
+def onCommand(Unit, Command, Level, Hue):
+    global _plugin
+    _plugin.onCommand(Unit, Command, Level, Hue)
+
+def onNotification(Name, Subject, Text, Status, Priority, Sound, ImageFile):
+    global _plugin
+    _plugin.onNotification(Name, Subject, Text, Status, Priority, Sound, ImageFile)
+
+def onDisconnect(Connection):
+    global _plugin
+    _plugin.onDisconnect(Connection)
+
+def onHeartbeat():
+    global _plugin
+    _plugin.onHeartbeat()
+
+    # Generic helper functions
+def DumpConfigToLog():
+    for x in Parameters:
+        if Parameters[x] != "":
+            Domoticz.Debug( "'" + x + "':'" + str(Parameters[x]) + "'")
+    Domoticz.Debug("Device count: " + str(len(Devices)))
+    for x in Devices:
+        Domoticz.Debug("Device:           " + str(x) + " - " + str(Devices[x]))
+        Domoticz.Debug("Device ID:       '" + str(Devices[x].ID) + "'")
+        Domoticz.Debug("Device Name:     '" + Devices[x].Name + "'")
+        Domoticz.Debug("Device nValue:    " + str(Devices[x].nValue))
+        Domoticz.Debug("Device sValue:   '" + Devices[x].sValue + "'")
+        Domoticz.Debug("Device LastLevel: " + str(Devices[x].LastLevel))
+    return
+    
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------  Image Management Routines  -----------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def GetDomoticzPort():
+
+    global IPPort
+    
+    pathpart=Parameters['HomeFolder'].split('/')[3]
+    searchfile = open("/etc/init.d/"+pathpart+".sh", "r")
+    for line in searchfile:
+        if ("-www" in line) and (line[0:11]=='DAEMON_ARGS'): 
+            IPPort=str(line.split(' ')[2].split('"')[0])
+    searchfile.close()
+    Domoticz.Debug('######### GetDomoticzPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+IPPort)
+    
+    return IPPort
+
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def GetImageDictionary(HostInfo):
+#
+# HostInfo : http(s)://user:pwd@somehost.somewhere:port
+#
+    import json
+    import requests
+
+    try:
+        mydict={}
+
+        url=HostInfo.split(':')[0]+'://'+HostInfo.split('@')[1]+'/json.htm?type=custom_light_icons'
+        username=HostInfo.split(':')[1][2:]
+        password=HostInfo.split(':')[2].split('@')[0]
+
+#        Domoticz.Log('....'+url+'....'+username+'....'+password+'....')
+
+        response=requests.get(url, auth=(username, password))
+        data = json.loads(response.text)
+        for Item in data['result']:
+            mydict[str(Item['imageSrc'])]=int(Item['idx'])
+
+    except:
+        mydict={}
+    
+    return mydict
+
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def ImportImages():
+#
+# Import ImagesToImport if not already loaded
+#
+    import glob
+
+    global ImageDictionary
+
+    ImageDictionary=GetImageDictionary(LocalHostInfo)
+    
+    if ImageDictionary == {}:
+        Domoticz.Log("ERROR I can not access the image library. Please modify the hardware setup to have the right username and password.")      
+    else:
+
+        for zipfile in glob.glob(HomeFolder+"CustomIcons/*.zip"):
+            importfile=zipfile.replace(HomeFolder,'')
+            try:
+                Domoticz.Image(importfile).Create()
+                Domoticz.Debug("Imported/Updated icons from "  + importfile)
+            except:
+                Domoticz.Log("ERROR can not import icons from "  + importfile)
+
+        ImageDictionary=GetImageDictionary(LocalHostInfo)
+
+        Domoticz.Debug('ImportImages: '+str(ImageDictionary))
+         
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------  Device Creation Routines  ------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+def CreateDevice(deviceunit,devicename,devicetype,devicelogo="",devicedescription="",sAxis="",InitialValue=0.0):
+    
+    if deviceunit not in Devices:
+
+        if ImageDictionary == {}:
+            firstimage=0
+            firstimagename='NoImage'
+            Domoticz.Log("ERROR I can not access the image library. Please modify the hardware setup to have the right Username and Password.")      
+        else:
+            firstimage=int(str(ImageDictionary.values()).split()[0].split('[')[1][:-1])
+            firstimagename=str(ImageDictionary.keys()).split()[0].split('[')[1][1:-2]
+            Domoticz.Debug("First image id: " + str(firstimage) + " name: " + firstimagename)
+
+        if firstimage != 0: # we have a dictionary with images and hopefully also the image for devicelogo
+
+            try:
+
+                deviceoptions={}
+                deviceoptions['Custom']="1;"+sAxis
+                Domoticz.Device(Name=devicename, Unit=deviceunit, TypeName=devicetype, Used=1, Image=ImageDictionary[devicelogo], Description=devicedescription).Create()
+                Devices[deviceunit].Update(nValue=Devices[deviceunit].nValue, sValue=str(InitialValue))
+                Domoticz.Log("Created device : " + devicename + " with '"+ devicelogo + "' icon and options "+str(deviceoptions)+' Value '+str(InitialValue))
+            except:
+
+# when devicelogo does not exist, use the first image found, (TypeName values Text and maybe some others will use standard images for that TypeName.)
+
+                try:
+                    Domoticz.Device(Name=devicename, Unit=deviceunit, TypeName=devicetype, Used=1, Image=firstimage, Description=devicedescription).Create()
+                    Devices[deviceunit].Update(nValue=Devices[deviceunit].nValue, sValue=str(InitialValue))
+                    Domoticz.Log("Created device : " + devicename+ " with '"+ firstimagename + "' icon and Value "+str(InitialValue))
+                except:
+                    Domoticz.Log("ERROR Could not create device : " + devicename)
+#
+# The next puts the right name, axis, image and description in the device
+#
+    try:
+
+        NewName = devicename
+
+        deviceoptions={}
+        deviceoptions['Custom']="1;"+sAxis
+
+        Devices[deviceunit].Update(nValue=Devices[deviceunit].nValue, sValue=Devices[deviceunit].sValue, Name=NewName, Options=deviceoptions, Image=ImageDictionary[devicelogo], Description=devicedescription)
+
+        Domoticz.Debug("Updated "+NewName)
+    except:
+        Domoticz.Log("Update Failed")
+        dummy=1
+
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+def CreateDevices():
+
+    global DeviceLibrary
+    
+    DeviceLibrary={}
+    Name=''
+    Type=''
+    Units=''
+    Command=''
+    MyStatus=1
+    ConfigFile='oneliners.conf'
+    try:
+        TheConfigFile=open(HomeFolder+ConfigFile, "r")
+        TheConfigFile.close
+        for Line in TheConfigFile:
+
+#        if Line[0] != '#' and Line.replace(' ','').replace('\t','') != '\n':    # skip comments and empty lines
+            if Line[0] not in ['#', ' ', '\t', '\n' ] and Line.replace(' ','').replace('\t','') != '\n':    # skip comments and empty lines
+
+                Line=Line.replace('\n','')                  # remove EOL
+#                Domoticz.Log('------------------------------------')
+#                Domoticz.Log(Line)
+                if Line.split('=')[0] == 'Name':
+                    Name = Line.split('=')[1]
+                elif Line.split('=')[0] == 'Description':
+                    Description = Line.split('=')[1]
+                elif Line.split('=')[0] == 'Type':
+                    Type = Line.split('=')[1]
+                elif Line.split('=')[0] == 'Image':
+                    Image = Line.split('=')[1]
+                elif Line.split('=')[0] == 'Units':
+                    Units = Line.split('=')[1]
+                elif Line.split('=')[0] == 'Command':
+                    Command = Line.split('=',1)[1]
+#                    Domoticz.Log(Command)
+                    DeviceEntry={}
+                    DeviceEntry['Name']   = Name
+                    DeviceEntry['Description']   = Description
+                    DeviceEntry['Type']   = Type
+                    DeviceEntry['Image']  = Image
+                    DeviceEntry['Units']  = Units
+                    DeviceEntry['Command']= Command
+                    DeviceEntry['Unit']   = -1
+                    DeviceLibrary[Name]   = DeviceEntry
+#                    Domoticz.Log(str(DeviceEntry))
+                else:
+                    Domoticz.Log('Error Line: '+Line)
+                    MyStatus=-1
+#        Domoticz.Log(str(DeviceLibrary))
+    except:
+        MyStatus=-1
+        Domoticz.Log('Error opening config file: '+HomeFolder+ConfigFile)
+
+    if MyStatus == 1:
+#
+# Check which devices I already have created during a previous startup
+#        
+        for Unit in Devices:
+            if Devices[Unit].Name in DeviceLibrary:
+                DeviceLibrary[Devices[Unit].Name]['Unit'] = Unit
+#
+# Create new devices
+#    
+        for Device in DeviceLibrary:
+            if DeviceLibrary[Device]['Unit'] == -1:
+                Domoticz.Log('Need to create '+str(Device))
+                Unit = 1
+                while Unit in Devices:
+                    Unit = Unit + 1
+                DeviceLibrary[Device]['Unit'] = Unit
+                CreateDevice(Unit,Device,DeviceLibrary[Device]['Type'],DeviceLibrary[Device]['Image'],DeviceLibrary[Device]['Description'],DeviceLibrary[Device]['Units'],0)
+            else:
+                Domoticz.Debug('May need to update'+str(Device))
+                CreateDevice(DeviceLibrary[Device]['Unit'],Device,DeviceLibrary[Device]['Type'],DeviceLibrary[Device]['Image'],DeviceLibrary[Device]['Description'],DeviceLibrary[Device]['Units'],0)
+#
+# Delete devices which are not in the config file anymore
+#                
+        DeleteOne=1
+        while DeleteOne == 1: # My implementation of repeat until, make sure to get into the loop and immediately make sure to get out of it
+            DeleteOne = 0
+            for Unit in Devices: # inner loop to find what to delete
+                if not Devices[Unit].Name in DeviceLibrary:
+                    DeleteOne = 1                                               # stay in the loop because we may have to do our thing again
+                    UnitToDelete = Unit
+                    Item=Devices[Unit].Name
+            if DeleteOne == 1: # out of the inner loop it is safe to delete
+                Domoticz.Log('.....')
+                Domoticz.Log('.....Delete  my own device:  **'+Item+'**  Unit: **'+str(UnitToDelete)+'**')
+                Devices[UnitToDelete].Delete()
+                Domoticz.Log('.....Deleted my own device:  **'+Item+'**  Unit: **'+str(UnitToDelete)+'**')
+
+
+    return MyStatus
+    
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------  Hardware Routines --------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def GetValue(Device):
+
+    global DeviceLibrary
+    
+    import subprocess
+
+    import time
+
+    command=DeviceLibrary[Device]['Command']
+    if command.find('@+') == 0:
+        Sources=command[command.find('"'):]
+        Source1=Sources[1:Sources.find('"',2)]
+        Source2=Sources[Sources.find('"',len(Source1)+2)+1:-1]
+        result=str(float(DeviceLibrary[Source1]['sValue'])+float(DeviceLibrary[Source2]['sValue']))
+    else:
+        if command.find('#+') == 0:
+            command = command[3:]
+            action = '+'
+        else:
+            action = ''
+        
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+
+        timeouts=0
+
+        result = ''
+        while timeouts < 10:
+
+            p_status = process.wait()
+
+            output = process.stdout.readline()
+
+            if output == '' and process.poll() is not None:
+                break
+
+            if output:
+                            
+                result=str(output.strip())[2:-1]
+
+                if action == '+':
+                    result=str(float(result.split(' ')[0])+float(result.split(' ')[1]))
+
+                timeouts=10
+            else:
+                time.sleep(0.2)
+                timeouts=timeouts+1
+
+    DeviceLibrary[Device]['sValue'] = result
+
+    return
+        
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
