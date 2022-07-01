@@ -15,6 +15,19 @@
         </ul>
     </description>
     <params>
+        <param field="Mode1" label="Config file."       width="120px" default="oneliners.conf"/>
+
+        <param field="Mode2" label="Interval."          width="120px">
+            <options>
+                <option label="10 sec." value="10"/>
+                <option label="20 sec." value="20"/>
+                <option label="30 sec." value="30"/>
+                <option label="40 sec." value="40"/>
+                <option label="50 sec." value="50"/>
+                <option label=" 1 min." value="60"    default="true"/>
+            </options>
+        </param>
+
         <param field="Username" label="Username."       width="120px" default="view"/>
 
         <param field="Password" label="Password."       width="120px" default="view" password="true"/>
@@ -34,12 +47,16 @@ import Domoticz
 
 StartupOK=0
 
+RoomName=''     # plugin parameter ( The name you gave to your hardware )
+
+ConfigFile=''          # Mode1
 HeartbeatInterval= 10  # 10 seconds
-HeartbeatCountMax= 6   # 6 * HeartbeatInterval = 60 seconds is 1 minute
+HeartbeatCountMax= 0   # = Mode 2 / HeartbeatInterval ; 
 HeartbeatCounter = 1   # counts down from Max to 1 before actual refresh; start with 1 which forces an immediate refresh after startup
 
 HomeFolder=''   # plugin finds right value
-IPPort=0        # plugin finds right value ( A dear friend of me changed the default port of his Domoticz ;-) )
+HTTPPort=''        # plugin finds right value
+IPAddress=''        # plugin finds right value
 
 Username=''     # plugin finds right value
 Password=''     # plugin finds right value
@@ -60,20 +77,26 @@ class BasePlugin:
     def onStart(self):
 
         global StartupOK
+        global ConfigFile
+        global RoomName
         
         global HeartbeatInterval
+        global HeartbeatCountMax
         global HomeFolder
         global Username
         global Password
 
         global LocalHostInfo
 
+        global IPAddress
+        global HTTPPort
+
         self.pollinterval = HeartbeatInterval  #Time in seconds between two polls
 
         if Parameters["Mode6"] == 'Debug':
-            self.debug = True
+#            self.debug = True
             Domoticz.Debugging(1)
-            DumpConfigToLog()
+#            DumpConfigToLog()
         else:
             Domoticz.Debugging(0)
 
@@ -83,13 +106,17 @@ class BasePlugin:
 #
 # Set some globals variables to right values
 #            
+            RoomName        =str(Parameters['Name'])
+            ConfigFile      =str(Parameters["Mode1"])
+            HeartbeatCountMax = int(int(Parameters["Mode2"]) / HeartbeatInterval)
             HomeFolder      =str(Parameters["HomeFolder"])
             Username        =str(Parameters["Username"])
             Password        =str(Parameters["Password"])
 
-            MyIPPort        =GetDomoticzPort()            
+            IPAddress         = '127.0.0.1'
+            HTTPPort          =GetDomoticzHTTPPort()            
 
-            LocalHostInfo='http://'+Username+':'+Password+'@localhost:'+MyIPPort
+            LocalHostInfo='http://'+Username+':'+Password+'@localhost:'+HTTPPort
 
             ImportImages()
 
@@ -215,7 +242,7 @@ def DumpConfigToLog():
 # ----------------------------------------------------  Image Management Routines  -----------------------------------------------------------------------
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def GetDomoticzPort():
+def todeleteGetDomoticzPort():
 
     global IPPort
     
@@ -228,6 +255,54 @@ def GetDomoticzPort():
     Domoticz.Debug('######### GetDomoticzPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+IPPort)
     
     return IPPort
+
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def GetDomoticzHTTPPort():
+
+    try:
+        import subprocess
+    except:
+        Domoticz.Log("python3 is missing module subprocess")
+        
+    try:
+        import time
+    except:
+        Domoticz.Log("python3 is missing module time")
+    
+    try:
+        Domoticz.Debug('GetDomoticzHTTPPort check startup file')
+        pathpart=Parameters['HomeFolder'].split('/')[3]
+        searchfile = open("/etc/init.d/"+pathpart+".sh", "r")
+        for line in searchfile:
+            if ("-www" in line) and (line[0:11]=='DAEMON_ARGS'): 
+                HTTPPort=str(line.split(' ')[2].split('"')[0])
+        searchfile.close()
+        Domoticz.Debug('GetDomoticzHTTPPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+HTTPPort)
+    except:
+        Domoticz.Debug('GetDomoticzHTTPPort check running process')
+        command='ps -ef | grep domoticz | grep sslwww | grep -v grep | tr -s " "'
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+
+        timeouts=0
+
+        result = ''
+        while timeouts < 10:
+            p_status = process.wait()
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:                        
+                HTTPPort=str(output)
+                HTTPPort = HTTPPort[HTTPPort.find('-www'):]
+                HTTPPort = HTTPPort[HTTPPort.find(' ')+1:]
+                HTTPPort = HTTPPort[:HTTPPort.find(' ')]
+            else:
+                time.sleep(0.2)
+                timeouts=timeouts+1
+        Domoticz.Debug('GetDomoticzHTTPPort looked at running process and found port: '+HTTPPort)
+    
+    return HTTPPort
 
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -341,6 +416,11 @@ def CreateDevice(deviceunit,devicename,devicetype,devicelogo="",devicedescriptio
 def CreateDevices():
 
     global DeviceLibrary
+    global ConfigFile
+#
+# Suppose there are no changes for the Room, even when not created yet
+#    
+    Recreate = False
     
     DeviceLibrary={}
     Name=''
@@ -348,7 +428,7 @@ def CreateDevices():
     Units=''
     Command=''
     MyStatus=1
-    ConfigFile='oneliners.conf'
+#    ConfigFile='oneliners.conf'
     try:
         TheConfigFile=open(HomeFolder+ConfigFile, "r")
         TheConfigFile.close
@@ -388,7 +468,7 @@ def CreateDevices():
                     MyStatus=-1
 #        Domoticz.Log(str(DeviceLibrary))
     except:
-        MyStatus=-1
+        MyStatus = -1
         Domoticz.Log('Error opening config file: '+HomeFolder+ConfigFile)
 
     if MyStatus == 1:
@@ -403,6 +483,7 @@ def CreateDevices():
 #    
         for Device in DeviceLibrary:
             if DeviceLibrary[Device]['Unit'] == -1:
+                Recreate = True
                 Domoticz.Log('Need to create '+str(Device))
                 Unit = 1
                 while Unit in Devices:
@@ -429,8 +510,108 @@ def CreateDevices():
                 Devices[UnitToDelete].Delete()
                 Domoticz.Log('.....Deleted my own device:  **'+Item+'**  Unit: **'+str(UnitToDelete)+'**')
 
+#
+# (Re-)Create Room
+#
+        RoomIdx=CreateRoom( RoomName, Recreate)
+        if (RoomIdx == 0):
+            MyStatus = 0
+#
+# Add all items from configuration file to Room if not already in
+#
+# Note that the order in the config file determines the order in the room
+#
+        if (MyStatus == 1):
+
+            Domoticz.Log('CreateDevices put devices in room')
+
+            for Device in DeviceLibrary:
+                Addition = AddToRoom(RoomIdx,Devices[DeviceLibrary[Device]['Unit']].ID)
+                if (Addition == 0):
+                    MyStatus = 0
 
     return MyStatus
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+def CreateRoom(RoomName, Recreate):
+
+    try:
+        import json
+    except:
+        Domoticz.Log("python3 is missing module json")
+        
+    try:
+        import requests
+    except:
+        Domoticz.Log("python3 is missing module requests")
+    
+    idx=0
+
+    try:
+
+        Domoticz.Log('Check if Room Exists')
+        
+        url='http://'+IPAddress+':'+HTTPPort+'/json.htm?type=plans&order=name&used=true'
+        Domoticz.Log('Check Room '+url)
+        response=requests.get(url, auth=(Username, Password))
+#        response=requests.get(url)
+        data = json.loads(response.text)
+
+        if 'result' in data.keys():
+            for Item in data['result']:
+                if str(Item['Name']) == RoomName:
+                    idx=int(Item['idx'])
+                    Domoticz.Log('Found Room '+RoomName+' with idx '+str(idx))
+
+        if (idx != 0) and Recreate :
+            url='http://'+IPAddress+':'+HTTPPort+'/json.htm?idx='+str(idx)+'&param=deleteplan&type=command'
+            Domoticz.Log('Delete Room '+url)
+            response=requests.get(url, auth=(Username, Password))
+#            response=requests.get(url)
+            idx = 0
+        
+        if idx == 0 :
+            url='http://'+IPAddress+':'+HTTPPort+'/json.htm?name='+RoomName+'&param=addplan&type=command'
+            Domoticz.Log('Create Room '+url)
+            response=requests.get(url, auth=(Username, Password))
+#            response=requests.get(url)
+            data = json.loads(response.text)
+            Domoticz.Log('CreateRoom Created Room'+str(data))
+            idx=int(data['idx'])
+    except:
+        Domoticz.Log('ERROR CreateRoom Failed')
+        idx=0
+
+    Domoticz.Log('CreateRoom status should not be 0 : '+str(idx))
+    
+    return idx
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+def AddToRoom(RoomIDX,ItemIDX):
+
+    try:
+        import json
+    except:
+        Domoticz.Log("python3 is missing module json")
+        
+    try:
+        import requests
+    except:
+        Domoticz.Log("python3 is missing module requests")
+    
+    status=1
+
+    try:
+        url='http://'+IPAddress+':'+HTTPPort+'/json.htm?activeidx='+str(ItemIDX)+'&activetype=0&idx='+str(RoomIDX)+'&param=addplanactivedevice&type=command'
+        response=requests.get(url, auth=(Username, Password))
+#        response=requests.get(url)
+        data = json.loads(response.text)
+    except:
+        Domoticz.Log('ERROR AddRoom Failed')
+        status=0
+
+    Domoticz.Debug('AddToRoom status should not be 0 : '+str(status))
+    
+    return status
+
     
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 # ----------------------------------------------------  Hardware Routines --------------------------------------------------------------------------------
