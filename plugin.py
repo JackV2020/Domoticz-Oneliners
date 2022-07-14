@@ -3,14 +3,18 @@
 # Author: Jack Veraart
 # Date  : 2020-07-05
 #     
-
+# Changelog :
+# V1.0      Creation
+# V1.0.1    Extra logging and some extra comments
 """
-<plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="1.0">
+<plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="1.0.1">
     <description>
         <font size="4" color="white">OneLiners </font><font color="white">...Notes...</font>
         <ul style="list-style-type:square">
-            <li><font color="yellow">When you have a Password on your domoticz, enter Username and Password below, not your admin account <font size="4" color="white"><b>:-(</b></font> create a read only user <font size="4" color="white"><b>;-)</b></font> </font></li>
-            <li><font color="yellow">It is needed to import all the icons from the CustomIcons subfolder.</font></li>
+            <li><font color="yellow">When you have a Password on your domoticz, enter Username and Password of an admin account below</font></li>
+            <li><font color="yellow">It is needed to import all the icons from the CustomIcons subfolder and to create a Room for you.</font></li>
+            <li><font color="yellow">You do not want to enter an admin account here ? <font size="4" color="white"><b>......</b></font></font></li>
+            <li><font color="yellow">...then open the network a bit >Setup >Settings >Local Networks : ::1;127.0.0.* and maybe also add something like the next for your LAN : ;192.168.2.* </font></li>
             <li><font color="yellow">To develop your own plugin...check this web site... <a href="https://www.domoticz.com/wiki/Developing_a_Python_plugin" ><font color="cyan">Developing_a_Python_plugin</font></a></font></li>
         </ul>
     </description>
@@ -28,9 +32,9 @@
             </options>
         </param>
 
-        <param field="Username" label="Username."       width="120px" default="view"/>
+        <param field="Username" label="Username."       width="120px" default="adminuser"/>
 
-        <param field="Password" label="Password."       width="120px" default="view" password="true"/>
+        <param field="Password" label="Password."       width="120px" default="adminpassword" password="true"/>
 
         <param field="Mode6" label="Debug."             width="75px">
             <options>
@@ -99,6 +103,7 @@ class BasePlugin:
 #            DumpConfigToLog()
         else:
             Domoticz.Debugging(0)
+            DumpConfigToLog()
 
         Domoticz.Log("onStart called")
         
@@ -168,11 +173,13 @@ class BasePlugin:
         
         if StartupOK == 1:
             
-            Domoticz.Debug("onHeartbeat called "+str(HeartbeatCounter))
+#            Domoticz.Debug("onHeartbeat called "+str(HeartbeatCounter))
+#            Domoticz.Log("onHeartbeat called "+str(HeartbeatCounter))
 
             if HeartbeatCounter == 1:
                 
-                Domoticz.Debug('Update Monitors')
+#                Domoticz.Debug('Update Monitors')
+#                Domoticz.Log('Update Monitors')
 
                 for Device in DeviceLibrary:
                     
@@ -227,6 +234,20 @@ def onHeartbeat():
 def DumpConfigToLog():
     for x in Parameters:
         if Parameters[x] != "":
+            Domoticz.Log( "'" + x + "':'" + str(Parameters[x]) + "'")
+    Domoticz.Log("Device count: " + str(len(Devices)))
+    for x in Devices:
+        Domoticz.Log("Device:           " + str(x) + " - " + str(Devices[x]))
+        Domoticz.Log("Device ID:       '" + str(Devices[x].ID) + "'")
+        Domoticz.Log("Device Name:     '" + Devices[x].Name + "'")
+        Domoticz.Log("Device nValue:    " + str(Devices[x].nValue))
+        Domoticz.Log("Device sValue:   '" + Devices[x].sValue + "'")
+        Domoticz.Log("Device LastLevel: " + str(Devices[x].LastLevel))
+    return
+    
+def DumpConfigToLogDebugs():
+    for x in Parameters:
+        if Parameters[x] != "":
             Domoticz.Debug( "'" + x + "':'" + str(Parameters[x]) + "'")
     Domoticz.Debug("Device count: " + str(len(Devices)))
     for x in Devices:
@@ -238,6 +259,7 @@ def DumpConfigToLog():
         Domoticz.Debug("Device LastLevel: " + str(Devices[x].LastLevel))
     return
     
+
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 # ----------------------------------------------------  Image Management Routines  -----------------------------------------------------------------------
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -252,7 +274,8 @@ def todeleteGetDomoticzPort():
         if ("-www" in line) and (line[0:11]=='DAEMON_ARGS'): 
             IPPort=str(line.split(' ')[2].split('"')[0])
     searchfile.close()
-    Domoticz.Debug('######### GetDomoticzPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+IPPort)
+#    Domoticz.Debug('######### GetDomoticzPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+IPPort)
+    Domoticz.Log('######### GetDomoticzPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+IPPort)
     
     return IPPort
 
@@ -271,16 +294,19 @@ def GetDomoticzHTTPPort():
         Domoticz.Log("python3 is missing module time")
     
     try:
-        Domoticz.Debug('GetDomoticzHTTPPort check startup file')
+#        Domoticz.Debug('GetDomoticzHTTPPort check startup file')
+        Domoticz.Log('GetDomoticzHTTPPort check startup file')
         pathpart=Parameters['HomeFolder'].split('/')[3]
         searchfile = open("/etc/init.d/"+pathpart+".sh", "r")
         for line in searchfile:
             if ("-www" in line) and (line[0:11]=='DAEMON_ARGS'): 
                 HTTPPort=str(line.split(' ')[2].split('"')[0])
         searchfile.close()
-        Domoticz.Debug('GetDomoticzHTTPPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+HTTPPort)
+#        Domoticz.Debug('GetDomoticzHTTPPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+HTTPPort)
+        Domoticz.Log('GetDomoticzHTTPPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+HTTPPort)
     except:
-        Domoticz.Debug('GetDomoticzHTTPPort check running process')
+#        Domoticz.Debug('GetDomoticzHTTPPort check running process')
+        Domoticz.Log('GetDomoticzHTTPPort check running process')
         command='ps -ef | grep domoticz | grep sslwww | grep -v grep | tr -s " "'
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
@@ -300,7 +326,8 @@ def GetDomoticzHTTPPort():
             else:
                 time.sleep(0.2)
                 timeouts=timeouts+1
-        Domoticz.Debug('GetDomoticzHTTPPort looked at running process and found port: '+HTTPPort)
+#        Domoticz.Debug('GetDomoticzHTTPPort looked at running process and found port: '+HTTPPort)
+        Domoticz.Log('GetDomoticzHTTPPort looked at running process and found port: '+HTTPPort)
     
     return HTTPPort
 
@@ -352,13 +379,15 @@ def ImportImages():
             importfile=zipfile.replace(HomeFolder,'')
             try:
                 Domoticz.Image(importfile).Create()
-                Domoticz.Debug("Imported/Updated icons from "  + importfile)
+#                Domoticz.Debug("Imported/Updated icons from "  + importfile)
+                Domoticz.Log("Imported/Updated icons from "  + importfile)
             except:
                 Domoticz.Log("ERROR can not import icons from "  + importfile)
 
         ImageDictionary=GetImageDictionary(LocalHostInfo)
 
-        Domoticz.Debug('ImportImages: '+str(ImageDictionary))
+#        Domoticz.Debug('ImportImages: '+str(ImageDictionary))
+        Domoticz.Log('ImportImages: '+str(ImageDictionary))
          
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 # ----------------------------------------------------  Device Creation Routines  ------------------------------------------------------------------------
@@ -374,7 +403,8 @@ def CreateDevice(deviceunit,devicename,devicetype,devicelogo="",devicedescriptio
         else:
             firstimage=int(str(ImageDictionary.values()).split()[0].split('[')[1][:-1])
             firstimagename=str(ImageDictionary.keys()).split()[0].split('[')[1][1:-2]
-            Domoticz.Debug("First image id: " + str(firstimage) + " name: " + firstimagename)
+#            Domoticz.Debug("First image id: " + str(firstimage) + " name: " + firstimagename)
+            Domoticz.Log("First image id: " + str(firstimage) + " name: " + firstimagename)
 
         if firstimage != 0: # we have a dictionary with images and hopefully also the image for devicelogo
 
@@ -407,7 +437,8 @@ def CreateDevice(deviceunit,devicename,devicetype,devicelogo="",devicedescriptio
 
         Devices[deviceunit].Update(nValue=Devices[deviceunit].nValue, sValue=Devices[deviceunit].sValue, Name=NewName, Options=deviceoptions, Image=ImageDictionary[devicelogo], Description=devicedescription)
 
-        Domoticz.Debug("Updated "+NewName)
+#        Domoticz.Debug("Updated "+NewName)
+        Domoticz.Log("Updated "+NewName)
     except:
         Domoticz.Log("Update Failed")
         dummy=1
@@ -491,7 +522,8 @@ def CreateDevices():
                 DeviceLibrary[Device]['Unit'] = Unit
                 CreateDevice(Unit,Device,DeviceLibrary[Device]['Type'],DeviceLibrary[Device]['Image'],DeviceLibrary[Device]['Description'],DeviceLibrary[Device]['Units'],0)
             else:
-                Domoticz.Debug('May need to update'+str(Device))
+#                Domoticz.Debug('May need to update'+str(Device))
+                Domoticz.Log('May need to update'+str(Device))
                 CreateDevice(DeviceLibrary[Device]['Unit'],Device,DeviceLibrary[Device]['Type'],DeviceLibrary[Device]['Image'],DeviceLibrary[Device]['Description'],DeviceLibrary[Device]['Units'],0)
 #
 # Delete devices which are not in the config file anymore
@@ -608,7 +640,8 @@ def AddToRoom(RoomIDX,ItemIDX):
         Domoticz.Log('ERROR AddRoom Failed')
         status=0
 
-    Domoticz.Debug('AddToRoom status should not be 0 : '+str(status))
+#    Domoticz.Debug('AddToRoom status should not be 0 : '+str(status))
+    Domoticz.Log('AddToRoom status should not be 0 : '+str(status))
     
     return status
 
