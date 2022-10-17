@@ -258,7 +258,8 @@ Date substitution. To read date based data I needed some variable date formats i
     YYYY    is translated current year so 17-01-YYYY becomes 17-01-2022 when current year is 2022
     YYYY-1  is translated to last year so 17-01-YYYY becomes 17-01-2021 when current year is 2022
 
-    LAST    is translated to 'last valid year' so 17-12-LAST becomes 17-12-2021 when current year is 2022 and today is before 17-12-2022
+    LAST    is translated to 'last valid year' so 17-12-LAST becomes 17-12-2021 when current 
+                year is 2022 and today is before 17-12-2022
 
 #### Hiding Devices
 
