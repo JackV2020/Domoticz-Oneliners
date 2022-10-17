@@ -6,6 +6,8 @@
 # Changelog :
 # V1.0      Creation
 # V1.0.1    Extra logging and some extra comments
+# V1.0.2    Added substitutions YYYY and YYYY-1 for fixed dates in current and previous year like 23-04-YYYY and 17-01-YYYY-1
+#           Added substitution LAST for fixed last "day in month" like 23-03-LAST where LAST becomes either this year or previous year
 """
 <plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="1.0.2">
     <description>
@@ -334,29 +336,36 @@ def GetDomoticzHTTPPort():
 
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def GetImageDictionary(HostInfo):
-#
-# HostInfo : http(s)://user:pwd@somehost.somewhere:port
-#
-    import json
-    import requests
+def GetImageDictionary():
+
+    try :
+        import json
+    except:
+        Domoticz.Log("python3 is missing module json")
+    
+    try:
+        import requests
+    except:
+        Domoticz.Log("python3 is missing module requests")
 
     try:
         mydict={}
 
-        url=HostInfo.split(':')[0]+'://'+HostInfo.split('@')[1]+'/json.htm?type=custom_light_icons'
-        username=HostInfo.split(':')[1][2:]
-        password=HostInfo.split(':')[2].split('@')[0]
+        url='http://'+IPAddress+':'+HTTPPort+'/json.htm?type=custom_light_icons'
+        
+        Domoticz.Debug('GetImageDictionary '+url+'....'+Username+'....'+Password+'....')
 
-#        Domoticz.Log('....'+url+'....'+username+'....'+password+'....')
-
-        response=requests.get(url, auth=(username, password))
+        response=requests.get(url, auth=(Username, Password))
+#        response=requests.get(url)
         data = json.loads(response.text)
+        
         for Item in data['result']:
             mydict[str(Item['imageSrc'])]=int(Item['idx'])
 
     except:
         mydict={}
+
+#    Domoticz.Log('GetImageDictionary '+str(mydict))
     
     return mydict
 
@@ -366,7 +375,47 @@ def ImportImages():
 #
 # Import ImagesToImport if not already loaded
 #
-    import glob
+    try :
+        import glob
+    except:
+        Domoticz.Log("python3 is missing module glob")
+
+    global ImageDictionary
+    
+    MyStatus=1
+    
+    ImageDictionary=GetImageDictionary()
+    
+    if ImageDictionary == {}:
+        Domoticz.Log("Please modify your setup to have Admin access. (See Hardware setup page of this plugin.)")      
+        MyStatus = 0
+    else:
+
+        for zipfile in glob.glob(HomeFolder+"CustomIcons/*.zip"):
+            importfile=zipfile.replace(HomeFolder,'')
+            try:
+                Domoticz.Image(importfile).Create()
+                Domoticz.Debug("ImportImages Imported/Updated icons from "  + importfile)
+            except:
+                MyStatus = 0
+                Domoticz.Log("ImportImages ERROR can not import icons from "  + importfile)
+
+        if (MyStatus == 1) : 
+            ImageDictionary=GetImageDictionary()
+            Domoticz.Log('ImportImages Oke')
+
+    return MyStatus
+    
+# --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def ImportImages_old():
+#
+# Import ImagesToImport if not already loaded
+#
+    try:
+        import glob
+    except:
+        Domoticz.Log("python3 is missing module glob")
 
     global ImageDictionary
 
@@ -663,13 +712,22 @@ def AddToRoom(RoomIDX,ItemIDX):
 def GetValue(Device):
 
     global DeviceLibrary
-    
-    import subprocess
 
-    import time
-    
-    from datetime import date
-    from datetime import timedelta
+    try:
+        import subprocess
+    except:
+        Domoticz.Log("python3 is missing module subprocess")
+    try:
+        import time
+    except:
+        Domoticz.Log("python3 is missing module time")
+ 
+    try:
+        from datetime import date
+        from datetime import timedelta
+        from datetime import datetime
+    except:
+        Domoticz.Log("python3 is missing module datetime")
 
     command=DeviceLibrary[Device]['Command']
 #    Domoticz.Log("Command : "+command)
@@ -679,11 +737,31 @@ def GetValue(Device):
         yesterday = today - timedelta(days = 1)
         d1 = yesterday.strftime("%d-%m-%Y")
         command = command.replace('DD-MM-YYYY-1',d1)
-
     if command.find("DD-MM-YYYY") > -1 :
         today = date.today()
         d1 = today.strftime("%d-%m-%Y")
         command = command.replace('DD-MM-YYYY',d1)
+    if command.find("YYYY-1") > -1 :
+        current_year = date.today().year
+        d1 = str(current_year - 1)
+        command = command.replace('YYYY',d1)
+    if command.find("YYYY") > -1 :
+        current_year = date.today().year
+        d1 = str(current_year)
+        command = command.replace('YYYY',d1)
+    if command.find("LAST") > -1 : # like 23-11-LAST
+        today = datetime.now()
+
+        date_start=command.find("LAST") - 6
+        check_day   = int(command[date_start:date_start+2])
+        check_month = int(command[date_start+3:date_start+5])
+        the_year  = date.today().year
+        check_date  = datetime(the_year, check_month, check_day)
+        
+        if ( check_date > today):
+            the_year = the_year - 1
+            
+        command = command.replace(command[date_start:date_start+6]+'LAST',command[date_start:date_start+6]+str(the_year))
 # add / substract etc. existing devices
     if command.find('@+') == 0:
         Sources=command[command.find('"'):]

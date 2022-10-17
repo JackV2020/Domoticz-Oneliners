@@ -245,13 +245,20 @@ You will find more examples in the config files.
 
 #### Substitution
 
-Date substitution. To read date based data I needed two variable date formats in the curl command.
+Date substitution. To read date based data I needed some variable date formats in the curl command.
 
     DD-MM-YYYY   is translated by the plugin to todays date
     DD-MM-YYYY-1 is translated by the plugin to yesterdays date
     
     See P1meter.conf for details on how to use.
     When you see the commands it will be clear how to use.
+    
+    More substitutions (note the 2 above with 'DD-MM-' have higher priority) :
+
+    YYYY    is translated current year so 17-01-YYYY becomes 17-01-2022 when current year is 2022
+    YYYY-1  is translated to last year so 17-01-YYYY becomes 17-01-2021 when current year is 2022
+
+    LAST    is translated to 'last valid year' so 17-12-LAST becomes 17-12-2021 when current year is 2022 and today is before 17-12-2022
 
 #### Hiding Devices
 
