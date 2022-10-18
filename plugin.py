@@ -8,6 +8,7 @@
 # V1.0.1    Extra logging and some extra comments
 # V1.0.2    Added substitutions YYYY and YYYY-1 for fixed dates in current and previous year like 23-04-YYYY and 17-01-YYYY-1
 #           Added substitution LAST for fixed last "day in month" like 23-03-LAST where LAST becomes either this year or previous year
+#           Added substitutions for yyyy-mm-dd formats like for DD-MM-YYYY formats like yyyy-mm-dd-1 for yesterday
 """
 <plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="1.0.2">
     <description>
@@ -731,20 +732,21 @@ def GetValue(Device):
 
     command=DeviceLibrary[Device]['Command']
 #    Domoticz.Log("Command : "+command)
-# replace date strings
-    if command.find("DD-MM-YYYY-1") > -1 :
+
+# replace date strings upper case
+    if command.find("DD-MM-YYYY-1") > -1 :              # yesterday = DD-MM-YYYY-1
         today = date.today()
         yesterday = today - timedelta(days = 1)
         d1 = yesterday.strftime("%d-%m-%Y")
-        command = command.replace('DD-MM-YYYY-1',d1)
+        command = command.replace('DD-MM-YYYY-1',d1)    # today = DD-MM-YYYY
     if command.find("DD-MM-YYYY") > -1 :
         today = date.today()
         d1 = today.strftime("%d-%m-%Y")
         command = command.replace('DD-MM-YYYY',d1)
-    if command.find("YYYY-1") > -1 :
+    if command.find("YYYY-1") > -1 :                    # last year fixed day and month like 23-11-YYYY-1
         current_year = date.today().year
         d1 = str(current_year - 1)
-        command = command.replace('YYYY',d1)
+        command = command.replace('YYYY-1',d1)
     if command.find("YYYY") > -1 :
         current_year = date.today().year
         d1 = str(current_year)
@@ -762,6 +764,39 @@ def GetValue(Device):
             the_year = the_year - 1
             
         command = command.replace(command[date_start:date_start+6]+'LAST',command[date_start:date_start+6]+str(the_year))
+
+# replace date strings lower case
+    if command.find("yyyy-mm-dd-1") > -1 :              # yesterday = yyyy-mm-dd
+        today = date.today()
+        yesterday = today - timedelta(days = 1)
+        d1 = yesterday.strftime("%Y-%m-%d")
+        command = command.replace('yyyy-mm-dd-1',d1)
+    if command.find("yyyy-mm-dd") > -1 :                # today = yyyy-dd-mm
+        today = date.today()
+        d1 = today.strftime("%Y-%m-%d")
+        command = command.replace('yyyy-mm-dd',d1)
+    if command.find("yyyy-1-") > -1 :                   # last year fixed day and month like yyyy-1-11-23
+        current_year = date.today().year
+        d1 = str(current_year - 1)
+        command = command.replace('yyyy-1',d1)
+    if command.find("yyyy") > -1 :                      # this year fixed day and month like yyyy-11-23
+        current_year = date.today().year
+        d1 = str(current_year)
+        command = command.replace('yyyy',d1)
+    if command.find("last") > -1 :                      # last valid date for date month like last-11-23
+        today = datetime.now()
+
+        date_start=command.find("last")
+        check_day   = int(command[date_start+8:date_start+10])
+        check_month = int(command[date_start+5:date_start+7])
+        the_year  = date.today().year
+        check_date  = datetime(the_year, check_month, check_day)
+        
+        if ( check_date > today):
+            the_year = the_year - 1
+            
+#        command = command.replace(command[date_start:date_start+6]+'LAST',command[date_start:date_start+6]+str(the_year))
+        command = command.replace('last'+command[date_start+4:date_start+10],str(the_year)+command[date_start+4:date_start+10])
 # add / substract etc. existing devices
     if command.find('@+') == 0:
         Sources=command[command.find('"'):]

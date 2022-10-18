@@ -32,7 +32,7 @@ Updates of values in Domoticz are done every minute.
 <br>[Substitutions](#substitutions)
 <br>[Hiding Devices](#hiding-Devices)
 <br>[Modifying a Device](#modifying-a-Device)
-
+<br>[SQL data from Domoticz database](#sql-data-from-domoticz-database)
 
 ### Installing the plugin
 
@@ -245,7 +245,7 @@ You will find more examples in the config files.
 
 #### Substitution
 
-Date substitution. To read date based data I needed some variable date formats in the curl command.
+Date substitution. To read date based data I needed some variable date formats in the curl command for data from Toon.
 
     DD-MM-YYYY   is translated by the plugin to todays date
     DD-MM-YYYY-1 is translated by the plugin to yesterdays date
@@ -255,11 +255,27 @@ Date substitution. To read date based data I needed some variable date formats i
     
     More substitutions (note the 2 above with 'DD-MM-' have higher priority) :
 
-    YYYY    is translated current year so 17-01-YYYY becomes 17-01-2022 when current year is 2022
-    YYYY-1  is translated to last year so 17-01-YYYY becomes 17-01-2021 when current year is 2022
+    nn-nn-YYYY      nn-nn is fixed and YYYY is translated to current year 
+                    so 17-01-YYYY becomes 17-01-2022 when current year is 2022
+    nn-nn-YYYY-1    nn-nn is fixed and YYYY is translated to last year 
+                    so 17-01-YYYY-1 becomes 17-01-2021 when current year is 2022
 
-    LAST    is translated to 'last valid year' so 17-12-LAST becomes 17-12-2021 when current 
-                year is 2022 and today is before 17-12-2022
+    nn-nn-LAST      nn-nn is fixed and LAST is translated to 'last valid year' 
+                    so 17-12-LAST becomes 17-12-2021 when current year is 2022 
+                    and today is before 17-12-2022
+
+Date substitution. To read date based data I needed some variable date formats in the sqlite3 command for data from Domoticz.
+
+    yyyy-mm-dd      is translated by the plugin to todays date
+    yyyy-mm-dd-1    is translated by the plugin to yesterdays date
+    yyyy-nn-nn      nn-nn is fixed and yyyy is translated to current year 
+                    so yyyy-01-17 becomes 2022-01-17 when current year is 2022
+    yyyy-1-nn-nn    nn-nn is fixed and yyyy-1 is translated to last year 
+                    so yyyy-01-17-1 becomes 17-01-2021 when current year is 2022
+
+    last-nn-nn      nn-nn is fixed and last is translated to 'last valid year' 
+                    so last-12-17 becomes 2021-12-17 when current year is 2022 
+                    and today is before 2022-12-17
 
 #### Hiding Devices
 
@@ -287,5 +303,65 @@ You can not change the type of the Device. When you want to change the type, you
 The most tricky thing is to rename a Device without losing data in Domoticz.
 To rename a Device you need to first rename it in Domoticz and after that also in your configuration .
 After reading the section "More advanced commands" above you understand that when you change a name of a Device you also need to change the commands using that Device.
+
+### SQL data from Domoticz database.
+
+The Domoticz database is an SQLite database on which you can use queries.
+
+Below I explain how to install and use some handy tools with the database to build queries and I give an example for a useful query.
+
+The example is a command for a Device for the Gas usage since the date of my last bill so I know what I can expect on my next bill.
+
+You can use this query also for other devices, just change the name of the device, the idx of the hardware and the date since when you want to measure and it will work. 
+It will work as long as the data of that date is already in your Domoticz ofcourse.
+
+I use a GUI based tool to browse the database and the sqlite3 command to extract data from the command line.
+
+To install the GUI based 'DB browser for Sqlite' you use 'sudo apt install sqlitebrowser' and you will find the tool back in the Raspberry Pi Menu in the section Programming.
+
+You also need to install the sqlite3 command with 'sudo apt install sqlite3'
+
+The use of the GUI is very easy. Stop domoticz because you may cause issues when you and Domoticz access the database at the same time. 
+Start 'DB browser for Sqlite' and open the database .../domoticz/domoticz.db.
+With the second tab you can browse and with the fourth tab you can develop sql statements. Interesting tables to browse are  
+
+    Percentage which contains the device idx and 5 minute latest values,
+    Percentage_Calendar with device idx and older values for min,max and average
+    DeviceStatus with device details like Name, ID=idx and HardwareID and last value
+    Hardware with all the hardware details like ID, Name and Enabled
+
+To calculate the Gas usage since a certain date I need the last value and the value of that certain date and substract them.
+
+The sql statement <b>'query 1'</b> to get the last value
+
+Select sValue from DeviceStatus where HardwareID = 26 and Name = 'Gas'
+
+Next I build the sql statement <b>'query 2'</b> to get the a value of a certain date.
+
+To find all the values in the Percentage_Calendar :
+
+Select * from Percentage_Calendar where DeviceRowID == (select ID from DeviceStatus where HardwareID = 26 and Name = 'Gas')
+
+To get the max value of 2022-10-16 (which is <b>'query 2'</b>) :
+
+Select Percentage_Max from Percentage_Calendar where DeviceRowID == (select ID from DeviceStatus where HardwareID = 26 and Name = 'Gas') and Date == '2022-10-16'
+
+Substracting the 2 values (current value - older value ) :
+
+Select ('query 1') - ('query 2') so :
+
+Select (Select sValue from DeviceStatus where HardwareID = 26 and Name = 'Gas') - (Select Percentage_Max from Percentage_Calendar where DeviceRowID == (select ID from DeviceStatus where HardwareID = 26 and Name = 'Gas') and Date == '2022-10-16')
+
+When this gives you the value you want you can use the next command on the command line :
+
+sqlite3 domoticz.db "the complete sql query" so :
+
+sqlite3 domoticz.db "Select (Select sValue from DeviceStatus where HardwareID = 26 and Name = 'Gas') - (Select Percentage_Max from Percentage_Calendar where DeviceRowID == (select ID from DeviceStatus where HardwareID = 26 and Name = 'Gas') and Date == '2022-10-16')"
+
+When you know that the gas bill is always on May 25th every year you can use date substitution in your oneliner config file :
+
+Command=sqlite3 domoticz.db "Select (Select sValue from DeviceStatus where HardwareID = 26 and Name = 'Gas') - (Select Percentage_Max from Percentage_Calendar where DeviceRowID == (select ID from DeviceStatus where HardwareID = 26 and Name = 'Gas') and Date == 'last-05-25')"
+
+
 
 Thanks for reading and enjoy.
