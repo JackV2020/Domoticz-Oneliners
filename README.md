@@ -27,6 +27,7 @@ Updates of values in Domoticz are done every minute.
 ### Below you find
 [Installing the plugin](#installing-the-plugin)
 <br>[Your first configuration](#your-first-configuration)
+<br>[Comments in configuration](#comments-in-configuration)
 <br>[Basic commands](#basic-commands)
 <br>[More advanced commands](#more-advanced-commands)
 <br>[Substitutions](#substitutions)
@@ -122,6 +123,20 @@ Notes on commands :
     This does not work as a command in your config file because $RANDOM is part of a terminal process.
 
 To remove a Device from Domoticz you just remove the Device from your configuration and restart the plugin.
+
+#### Comments in configuration
+
+You can start a line with a # and place some comment after it.
+
+To comment out a section of lines you can start the section with /* and end it with */ like :
+
+/*
+<br>This is a block comment
+<br> and looks nicer than
+<br> when you you use a #
+<br> in front of each line
+<br>*/
+
 
 ### Basic commands
 

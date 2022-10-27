@@ -9,6 +9,7 @@
 # V1.0.2    Added substitutions YYYY and YYYY-1 for fixed dates in current and previous year like 23-04-YYYY and 17-01-YYYY-1
 #           Added substitution LAST for fixed last "day in month" like 23-03-LAST where LAST becomes either this year or previous year
 #           Added substitutions for yyyy-mm-dd formats like for DD-MM-YYYY formats like yyyy-mm-dd-1 for yesterday
+# V1.0.3    Added block comment in configuration files by using /* and */ as delimiters
 """
 <plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="1.0.2">
     <description>
@@ -511,14 +512,18 @@ def CreateDevices():
     Units=''
     Command=''
     MyStatus=1
+    CommentBlock = False
 #    ConfigFile='oneliners.conf'
     try:
         TheConfigFile=open(HomeFolder+ConfigFile, "r")
         TheConfigFile.close
         for Line in TheConfigFile:
 
+            CommentBlock = CommentBlock or  ( Line[:2] == '/*' )
+
 #        if Line[0] != '#' and Line.replace(' ','').replace('\t','') != '\n':    # skip comments and empty lines
-            if Line[0] not in ['#', ' ', '\t', '\n' ] and Line.replace(' ','').replace('\t','') != '\n':    # skip comments and empty lines
+#            if Line[0] not in ['#', ' ', '\t', '\n' ] and Line.replace(' ','').replace('\t','') != '\n':    # skip comments and empty lines
+            if (not CommentBlock) and (Line[0] not in ['#', ' ', '\t', '\n' ] and Line.replace(' ','').replace('\t','') != '\n' ) :    # skip comments and empty lines
 
                 Line=Line.replace('\n','')                  # remove EOL
 #                Domoticz.Log('------------------------------------')
@@ -558,6 +563,8 @@ def CreateDevices():
                     Domoticz.Log('Error Line: '+Line)
                     MyStatus=-1
 #        Domoticz.Log(str(DeviceLibrary))
+            if ( Line[:2] == '*/' ) :
+                CommentBlock = False
     except:
         MyStatus = -1
         Domoticz.Log('Error opening config file: '+HomeFolder+ConfigFile)
