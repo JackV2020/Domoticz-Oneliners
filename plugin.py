@@ -11,7 +11,7 @@
 #           Added substitutions for yyyy-mm-dd formats like for DD-MM-YYYY formats like yyyy-mm-dd-1 for yesterday
 # V1.0.3    Added block comment in configuration files by using /* and */ as delimiters
 """
-<plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="1.0.2">
+<plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="1.0.3">
     <description>
         <font size="4" color="white">OneLiners </font><font color="white">...Notes...</font>
         <ul style="list-style-type:square">
