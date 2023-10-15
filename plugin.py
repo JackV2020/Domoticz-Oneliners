@@ -4,21 +4,22 @@
 # Date  : 2020-07-05
 #     
 # Changelog :
-# V1.0      Creation
-# V1.0.1    Extra logging and some extra comments
-# V1.0.2    Added substitutions YYYY and YYYY-1 for fixed dates in current and previous year like 23-04-YYYY and 17-01-YYYY-1
-#           Added substitution LAST for fixed last "day in month" like 23-03-LAST where LAST becomes either this year or previous year
-#           Added substitutions for yyyy-mm-dd formats like for DD-MM-YYYY formats like yyyy-mm-dd-1 for yesterday
-# V1.0.3    Added block comment in configuration files by using /* and */ as delimiters
+#
+# version 2.0.0 : Changed for new Domoticz API
+# version 1.0.3 : Added block comment in configuration files by using /* and */ as delimiters
+# version 1.0.2 : Added substitutions YYYY and YYYY-1 for fixed dates in current and previous year like 23-04-YYYY and 17-01-YYYY-1
+#                 Added substitution LAST for fixed last "day in month" like 23-03-LAST where LAST becomes either this year or previous year
+#                 Added substitutions for yyyy-mm-dd formats like for DD-MM-YYYY formats like yyyy-mm-dd-1 for yesterday
+# version 1.0.1 : Extra logging and some extra comments
+# version 1.0.0 : Initial version
+#
 """
-<plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="1.0.3">
+<plugin key="JacksOneLiners" name="Jacks OneLiners" author="Jack Veraart" version="2.0.0">
     <description>
         <font size="4" color="white">OneLiners </font><font color="white">...Notes...</font>
         <ul style="list-style-type:square">
-            <li><font color="yellow">When you have a Password on your domoticz, enter Username and Password of an admin account below</font></li>
-            <li><font color="yellow">It is needed to import all the icons from the CustomIcons subfolder and to create a Room for you.</font></li>
-            <li><font color="yellow">You do not want to enter an admin account here ? <font size="4" color="white"><b>......</b></font></font></li>
-            <li><font color="yellow">...then open the network a bit >Setup >Settings >Local Networks : ::1;127.0.0.* and maybe also add something like the next for your LAN : ;192.168.2.* </font></li>
+            <li><font color="yellow">Below you specify the config file like myfile.conf </font></li>
+            <li><font color="yellow">Add Admin account details below so I can import icons and create a room.</font></li>
             <li><font color="yellow">To develop your own plugin...check this web site... <a href="https://www.domoticz.com/wiki/Developing_a_Python_plugin" ><font color="cyan">Developing_a_Python_plugin</font></a></font></li>
         </ul>
     </description>
@@ -36,9 +37,9 @@
             </options>
         </param>
 
-        <param field="Username" label="Username."       width="120px" default="adminuser"/>
+        <param field="Username" label="Username."       width="120px" default="admin"/>
 
-        <param field="Password" label="Password."       width="120px" default="adminpassword" password="true"/>
+        <param field="Password" label="Password."       width="120px" default="domoticz" password="true"/>
 
         <param field="Mode6" label="Debug."             width="75px">
             <options>
@@ -54,20 +55,14 @@ import Domoticz
 # Prepare some global variables
 
 StartupOK=0
-
-RoomName=''     # plugin parameter ( The name you gave to your hardware )
+HomeFolder=''   # plugin finds right value
+LocalHostInfo=''# plugin finds right value
+RoomName=''     # plugin finds right value
 
 ConfigFile=''          # Mode1
 HeartbeatInterval= 10  # 10 seconds
 HeartbeatCountMax= 0   # = Mode 2 / HeartbeatInterval ; 
 HeartbeatCounter = 1   # counts down from Max to 1 before actual refresh; start with 1 which forces an immediate refresh after startup
-
-HomeFolder=''   # plugin finds right value
-HTTPPort=''        # plugin finds right value
-IPAddress=''        # plugin finds right value
-
-Username=''     # plugin finds right value
-Password=''     # plugin finds right value
 
 Base_id=1
 Base_Image='JVNo'
@@ -91,13 +86,8 @@ class BasePlugin:
         global HeartbeatInterval
         global HeartbeatCountMax
         global HomeFolder
-        global Username
-        global Password
 
         global LocalHostInfo
-
-        global IPAddress
-        global HTTPPort
 
         self.pollinterval = HeartbeatInterval  #Time in seconds between two polls
 
@@ -107,7 +97,7 @@ class BasePlugin:
 #            DumpConfigToLog()
         else:
             Domoticz.Debugging(0)
-            DumpConfigToLog()
+#            DumpConfigToLog()
 
         Domoticz.Log("onStart called")
         
@@ -122,16 +112,15 @@ class BasePlugin:
             Username        =str(Parameters["Username"])
             Password        =str(Parameters["Password"])
 
-            IPAddress         = '127.0.0.1'
-            HTTPPort          =GetDomoticzHTTPPort()            
+            LocalHostInfo     = "https://"+Username+":"+Password+"@"+GetDomoticzIP()+":"+GetDomoticzHTTPSPort()
 
-            LocalHostInfo='http://'+Username+':'+Password+'@localhost:'+HTTPPort
-
-            ImportImages()
+            StartupOK = ImportImages()
 
 # Create devices as configured in oneliners.conf
 
-            StartupOK = CreateDevices()
+            if StartupOK == 1:
+            
+                StartupOK = CreateDevices()
             
             if StartupOK == 1:
                 
@@ -269,49 +258,30 @@ def DumpConfigToLogDebugs():
 # ----------------------------------------------------  Image Management Routines  -----------------------------------------------------------------------
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def todeleteGetDomoticzPort():
-
-    global IPPort
-    
-    pathpart=Parameters['HomeFolder'].split('/')[3]
-    searchfile = open("/etc/init.d/"+pathpart+".sh", "r")
-    for line in searchfile:
-        if ("-www" in line) and (line[0:11]=='DAEMON_ARGS'): 
-            IPPort=str(line.split(' ')[2].split('"')[0])
-    searchfile.close()
-#    Domoticz.Debug('######### GetDomoticzPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+IPPort)
-    Domoticz.Log('######### GetDomoticzPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+IPPort)
-    
-    return IPPort
-
-# --------------------------------------------------------------------------------------------------------------------------------------------------------
-
-def GetDomoticzHTTPPort():
+def GetDomoticzHTTPSPort():
 
     try:
         import subprocess
     except:
         Domoticz.Log("python3 is missing module subprocess")
-        
+
     try:
         import time
     except:
         Domoticz.Log("python3 is missing module time")
-    
+
     try:
-#        Domoticz.Debug('GetDomoticzHTTPPort check startup file')
-        Domoticz.Log('GetDomoticzHTTPPort check startup file')
+        Domoticz.Debug('GetDomoticzHTTPSPort check startup file')
         pathpart=Parameters['HomeFolder'].split('/')[3]
         searchfile = open("/etc/init.d/"+pathpart+".sh", "r")
         for line in searchfile:
-            if ("-www" in line) and (line[0:11]=='DAEMON_ARGS'): 
-                HTTPPort=str(line.split(' ')[2].split('"')[0])
+            if ("-sslwww" in line) and (line[0:11]=='DAEMON_ARGS'):
+                HTTPSPort=str(line.split(' ')[2].split('"')[0])
+                HTTPSPort = HTTPSPort.replace('\\n','') # remove EOL
         searchfile.close()
-#        Domoticz.Debug('GetDomoticzHTTPPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+HTTPPort)
-        Domoticz.Log('GetDomoticzHTTPPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+HTTPPort)
+        Domoticz.Debug('GetDomoticzHTTPSPort looked in: '+"/etc/init.d/"+pathpart+".sh"+' and found port: '+HTTPSPort)
     except:
-#        Domoticz.Debug('GetDomoticzHTTPPort check running process')
-        Domoticz.Log('GetDomoticzHTTPPort check running process')
+        Domoticz.Debug('GetDomoticzHTTPSPort check running process')
         command='ps -ef | grep domoticz | grep sslwww | grep -v grep | tr -s " "'
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
@@ -323,51 +293,37 @@ def GetDomoticzHTTPPort():
             output = process.stdout.readline()
             if output == '' and process.poll() is not None:
                 break
-            if output:                        
-                HTTPPort=str(output)
-                HTTPPort = HTTPPort[HTTPPort.find('-www'):]
-                HTTPPort = HTTPPort[HTTPPort.find(' ')+1:]
-                HTTPPort = HTTPPort[:HTTPPort.find(' ')]
+            if output:
+                HTTPSPort=str(output)
+                HTTPSPort = HTTPSPort[HTTPSPort.find('-sslwww'):]
+                HTTPSPort = HTTPSPort[HTTPSPort.find(' ')+1:]
+                HTTPSPort = HTTPSPort[:HTTPSPort.find(' ')]
+                HTTPSPort = HTTPSPort.replace('\\n','') # remove EOL
             else:
                 time.sleep(0.2)
                 timeouts=timeouts+1
-#        Domoticz.Debug('GetDomoticzHTTPPort looked at running process and found port: '+HTTPPort)
-        Domoticz.Log('GetDomoticzHTTPPort looked at running process and found port: '+HTTPPort)
-    
-    return HTTPPort
+        Domoticz.Log('GetDomoticzHTTPSPort looked at running process and found port: '+HTTPSPort)
+
+    return HTTPSPort
 
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
-
 def GetImageDictionary():
 
-    try :
-        import json
-    except:
-        Domoticz.Log("python3 is missing module json")
-    
-    try:
-        import requests
-    except:
-        Domoticz.Log("python3 is missing module requests")
+    import json
+    import requests
 
     try:
         mydict={}
 
-        url='http://'+IPAddress+':'+HTTPPort+'/json.htm?type=custom_light_icons'
-        
-        Domoticz.Debug('GetImageDictionary '+url+'....'+Username+'....'+Password+'....')
+        url=LocalHostInfo+'/json.htm?type=command&param=custom_light_icons'
 
-        response=requests.get(url, auth=(Username, Password))
-#        response=requests.get(url)
+        response=requests.get(url, verify=False)
         data = json.loads(response.text)
-        
         for Item in data['result']:
             mydict[str(Item['imageSrc'])]=int(Item['idx'])
 
     except:
         mydict={}
-
-#    Domoticz.Log('GetImageDictionary '+str(mydict))
     
     return mydict
 
@@ -404,43 +360,25 @@ def ImportImages():
 
         if (MyStatus == 1) : 
             ImageDictionary=GetImageDictionary()
-            Domoticz.Log('ImportImages Oke')
+            Domoticz.Debug('ImportImages Oke')
 
     return MyStatus
-    
+
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def ImportImages_old():
-#
-# Import ImagesToImport if not already loaded
-#
+def GetDomoticzIP():
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        import glob
-    except:
-        Domoticz.Log("python3 is missing module glob")
+        # doesn't even have to be reachable
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
 
-    global ImageDictionary
-
-    ImageDictionary=GetImageDictionary(LocalHostInfo)
-    
-    if ImageDictionary == {}:
-        Domoticz.Log("ERROR I can not access the image library. Please modify the hardware setup to have the right username and password.")      
-    else:
-
-        for zipfile in glob.glob(HomeFolder+"CustomIcons/*.zip"):
-            importfile=zipfile.replace(HomeFolder,'')
-            try:
-                Domoticz.Image(importfile).Create()
-#                Domoticz.Debug("Imported/Updated icons from "  + importfile)
-                Domoticz.Log("Imported/Updated icons from "  + importfile)
-            except:
-                Domoticz.Log("ERROR can not import icons from "  + importfile)
-
-        ImageDictionary=GetImageDictionary(LocalHostInfo)
-
-#        Domoticz.Debug('ImportImages: '+str(ImageDictionary))
-        Domoticz.Log('ImportImages: '+str(ImageDictionary))
-         
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 # ----------------------------------------------------  Device Creation Routines  ------------------------------------------------------------------------
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -489,8 +427,7 @@ def CreateDevice(deviceunit,devicename,devicetype,devicelogo="",devicedescriptio
 
         Devices[deviceunit].Update(nValue=Devices[deviceunit].nValue, sValue=Devices[deviceunit].sValue, Name=NewName, Options=deviceoptions, Image=ImageDictionary[devicelogo], Description=devicedescription, Used=ShowDevice)
 
-#        Domoticz.Debug("Updated "+NewName)
-        Domoticz.Log("Updated "+NewName)
+        Domoticz.Debug("Updated "+NewName)
     except:
         Domoticz.Log("Update Failed")
         dummy=1
@@ -589,8 +526,7 @@ def CreateDevices():
                 DeviceLibrary[Device]['Unit'] = Unit
                 CreateDevice(Unit,Device,DeviceLibrary[Device]['Type'],DeviceLibrary[Device]['Image'],DeviceLibrary[Device]['Description'],DeviceLibrary[Device]['Units'],0,int(DeviceLibrary[Device]['ShowDevice']))
             else:
-#                Domoticz.Debug('May need to update'+str(Device))
-                Domoticz.Log('May need to update'+str(Device))
+                Domoticz.Debug('May need to update '+str(Device))
                 CreateDevice(DeviceLibrary[Device]['Unit'],Device,DeviceLibrary[Device]['Type'],DeviceLibrary[Device]['Image'],DeviceLibrary[Device]['Description'],DeviceLibrary[Device]['Units'],0,int(DeviceLibrary[Device]['ShowDevice']))
 #
 # Delete devices which are not in the config file anymore
@@ -622,7 +558,7 @@ def CreateDevices():
 #
         if (MyStatus == 1):
 
-            Domoticz.Log('CreateDevices put devices in room')
+            Domoticz.Debug('CreateDevices put devices in room')
 
             for Device in DeviceLibrary:
                 Addition = AddToRoom(RoomIdx,Devices[DeviceLibrary[Device]['Unit']].ID)
@@ -647,11 +583,11 @@ def CreateRoom(RoomName, Recreate):
 
     try:
 
-        Domoticz.Log('Check if Room Exists')
+        Domoticz.Debug('Check if Room Exists')
         
-        url='http://'+IPAddress+':'+HTTPPort+'/json.htm?type=plans&order=name&used=true'
-        Domoticz.Log('Check Room '+url)
-        response=requests.get(url, auth=(Username, Password))
+        url=LocalHostInfo+'/json.htm?type=command&param=getplans&order=name&used=true'
+        Domoticz.Debug('Check Room '+url)
+        response=requests.get(url, verify=False)
 #        response=requests.get(url)
         data = json.loads(response.text)
 
@@ -659,19 +595,19 @@ def CreateRoom(RoomName, Recreate):
             for Item in data['result']:
                 if str(Item['Name']) == RoomName:
                     idx=int(Item['idx'])
-                    Domoticz.Log('Found Room '+RoomName+' with idx '+str(idx))
+                    Domoticz.Debug('Found Room '+RoomName+' with idx '+str(idx))
 
         if (idx != 0) and Recreate :
-            url='http://'+IPAddress+':'+HTTPPort+'/json.htm?idx='+str(idx)+'&param=deleteplan&type=command'
+            url=LocalHostInfo+'/json.htm?idx='+str(idx)+'&param=deleteplan&type=command'
             Domoticz.Log('Delete Room '+url)
-            response=requests.get(url, auth=(Username, Password))
+            response=requests.get(url, verify=False)
 #            response=requests.get(url)
             idx = 0
         
         if idx == 0 :
-            url='http://'+IPAddress+':'+HTTPPort+'/json.htm?name='+RoomName+'&param=addplan&type=command'
+            url=LocalHostInfo+'/json.htm?name='+RoomName+'&param=addplan&type=command'
             Domoticz.Log('Create Room '+url)
-            response=requests.get(url, auth=(Username, Password))
+            response=requests.get(url, verify=False)
 #            response=requests.get(url)
             data = json.loads(response.text)
             Domoticz.Log('CreateRoom Created Room'+str(data))
@@ -680,7 +616,7 @@ def CreateRoom(RoomName, Recreate):
         Domoticz.Log('ERROR CreateRoom Failed')
         idx=0
 
-    Domoticz.Log('CreateRoom status should not be 0 : '+str(idx))
+    Domoticz.Debug('CreateRoom status should not be 0 : '+str(idx))
     
     return idx
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -699,20 +635,18 @@ def AddToRoom(RoomIDX,ItemIDX):
     status=1
 
     try:
-        url='http://'+IPAddress+':'+HTTPPort+'/json.htm?activeidx='+str(ItemIDX)+'&activetype=0&idx='+str(RoomIDX)+'&param=addplanactivedevice&type=command'
-        response=requests.get(url, auth=(Username, Password))
+        url=LocalHostInfo+'/json.htm?activeidx='+str(ItemIDX)+'&activetype=0&idx='+str(RoomIDX)+'&param=addplanactivedevice&type=command'
+        response=requests.get(url, verify=False)
 #        response=requests.get(url)
         data = json.loads(response.text)
     except:
         Domoticz.Log('ERROR AddRoom Failed')
         status=0
 
-#    Domoticz.Debug('AddToRoom status should not be 0 : '+str(status))
-    Domoticz.Log('AddToRoom status should not be 0 : '+str(status))
+    Domoticz.Debug('AddToRoom status should not be 0 : '+str(status))
     
     return status
 
-    
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
 # ----------------------------------------------------  Hardware Routines --------------------------------------------------------------------------------
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -754,11 +688,11 @@ def GetValue(Device):
         current_year = date.today().year
         d1 = str(current_year - 1)
         command = command.replace('YYYY-1',d1)
-    if command.find("YYYY") > -1 :
+    if command.find("-YYYY") > -1 :
         current_year = date.today().year
         d1 = str(current_year)
         command = command.replace('YYYY',d1)
-    if command.find("LAST") > -1 : # like 23-11-LAST
+    if command.find("-LAST") > -1 : # like 23-11-LAST
         today = datetime.now()
 
         date_start=command.find("LAST") - 6
@@ -786,11 +720,11 @@ def GetValue(Device):
         current_year = date.today().year
         d1 = str(current_year - 1)
         command = command.replace('yyyy-1',d1)
-    if command.find("yyyy") > -1 :                      # this year fixed day and month like yyyy-11-23
+    if command.find("yyyy-") > -1 :                      # this year fixed day and month like yyyy-11-23
         current_year = date.today().year
         d1 = str(current_year)
         command = command.replace('yyyy',d1)
-    if command.find("last") > -1 :                      # last valid date for date month like last-11-23
+    if command.find("last-") > -1 :                      # last valid date for date month like last-11-23
         today = datetime.now()
 
         date_start=command.find("last")
